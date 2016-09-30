@@ -201,10 +201,15 @@ Dans l'étude \textbf{relative} des résultats, c'est à dire lorsqu'on les comp
 Dans l'absolu, ce produit matriciel avec un bloc 1D n'est pas très performant. En effet, pour comparaison, le même calcul avec le CPU a pris \textbf{3.73 secondes} pour une puissance de calcul de \textbf{36.81 gigaflops}. On voit donc que le CPU est plus performant que le GPU en bloc 1D. On comprend donc que la GPU n'est pas suffisamment monopolisée, le calcul pas assez bien distribué pour qu'il puisse être réellement rentable.
 
 \section{Allocations de blocs 2 dimensions sans mémoire partagée}
+
+\subsection{Violation de la coalescence des données}
+Avant d'analyser les résultats concrètement obtenus, nous rappelons que, lors du TP, nous avons expérimenté un échange simple entre lignes et colonnes dans l'algorithme du produit, qui intervertissait juste le sens de parcours et donc le découpage en blocs lors du calcul de la matrice résultat. Nous avions alors vu que cette simple modification avait un impact considérable sur les résultats. Nous avions en fait observé une violation de la coalescence des données. En d'autres termes, les données parcourues en mémoire n'étaient plus, ou beaucoup moins contiguës, ce qui avait pour conséquence une immense perte de temps, sans doute provoquée par des va et viens dans le cache ou bien par une plus grande durée moyenne des communications.
+
+\subsubsection{Analyse des résultats en 2D sur le kernel 2 en jouant sur X et Y sans mémoire partagée}
 Dans cette partie, nous allons donc jouer sur un deuxième facteur pour améliorer les performances et les rendre enfin meilleures que sur la CPU. Pour ce faire, nous allons désormais jouer sur \textbf{deux} paramètres afin d'étudier les résultats : la \textit{hauteur} et la \textit{largeur} des blocs. Ainsi, les blocs pourront potentiellement contenir des données en mémoire de manière plus contiguë. Cela pourrait potentiellement diminuer le temps de calcul étant donné que les mêmes données seront peut-être chargées en cache pour plusieurs \textit{threads}.\par
 La figure \ref{fig:2DK2_power} est une représentation des résultats obtenus. Comme il s'agit d'un tableau à trois dimensions, le graphe utilisé ici, qui nous a gracieusement été fourni par notre enseignant, se sert de l'axe des abscisses pour la variable $\mathcal{X}$, la largeur du bloc, et de l'axe des ordonnées pour la variable $\mathcal{Y}$. La troisième variable, la puissance de calcul, est elle représentée par la couleur appliquée au niveau de l'intersection des deux points. On voit que la couleur bleu, par exemple, témoigne d'une puissance inférieure à 20 Gflops, tandis que la couleur violette témoigne d'une puissance de calcul entre 60 et 80 Gflops, la plus haute puissance de calcul enregistrée dans ce TP et avec le kernel 2 étant de \textbf{70.94} Gflops, pour $ X = 16 $ et $Y = 64$.\par
 \begin{figure} 
-      \includegraphics[keepaspectratio,width=12cm]{img/Gflops_depending_bloc_size.png}
+      \includegraphics[keepaspectratio,width=10cm]{img/Gflops_depending_bloc_size.png}
 	  \caption{Puissance de calcul en fonction de la hauteur du bloc $\mathcal{Y}$ (en ordonnées) et de la largeur des blocs $\mathcal{X}$ (en abscisse).}
       \label{fig:2DK2_power}
 \end{figure} 
@@ -221,7 +226,10 @@ Bien qu'on ne puisse pas donner de règle absolue, étant donné que certains r�
 Au contraire, on constate que de manière générale, les valeurs 1,2,4,256,512 et 1024 ne donnent pas les meilleurs résultat, quelque soit leur pendant sur l'autre axe, et quelque soit le fait qu'il s'agisse de \texttt{X} ou de \texttt{Y}.\par
 On devine ainsi que le pavage optimal tend vers une forme carrée, avec un carré ni trop grand ni trop petit. Il est tout à fait compréhensible que le carré ne dût pas avoir une surface supérieure à 1024, puisque cela n'est pas supporté par CUDA. On comprend aussi que le carré ne doive pas être trop petit, car dans ce cas là, on aurait trop de communications et de chargements comparé au nombre de calculs effectué par chaque bloc. En fait, on voit très bien sur la figure \ref{fig:2DK2_power} que les valeurs du milieu sont les plus élevées.
 
-\ 
+\section{Analyse des résultats en 2D sur le kernel 4 avec mémoire partagée}
+Pour l'instant nous ne nous étions pas préoccupés des allocations mémoires et des registres utilisés. Dans cette section, c'est exactement ce qui va nous intéresser. Nous allons tenter d'optimiser l'allocation des différentes mémoires de la GPU pour ce calcul matriciel.
+\subsection{Considérations théoriques}
+ 
 
 
 \section{Annexe : code}
@@ -239,7 +247,6 @@ void ProcessorInit(void){
 }
 \end{lstlisting}
 
-\newpage
 
 \subsection*{Calcul de l'offset pour un processus {\texttt{Me} donné}}
 \begin{lstlisting}
