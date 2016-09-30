@@ -1,6 +1,5 @@
 set output "bloc_1D_time.png"
-set title "Temps d'exécution  en fonction de la largeur des blocs"
-set terminal pngcairo background rgb 'white' size 900,600 enhanced font 'Verdana,16' 
+set terminal pngcairo background rgb 'white' size 1250,900 enhanced font 'Verdana,30' 
 #set datafile separator ""
 set font ',22'
 set decimalsign ","
@@ -12,4 +11,4 @@ set linetype 1 lc rgb 'black'
 set logscale y 2
 set logscale x 2
 #set yrange [3.65:4.80]
-plot 	'../data/K1_blocs1D.csv'  using 1:2  with lines title "Temps d'exécution" lt rgb "blue" lw 3
+plot 	'data/K1_blocs1D.csv'  using 1:2  with lines title "Temps d'exécution" lt rgb "blue" lw 3

@@ -27,6 +27,7 @@
 \usepackage{graphicx} %package to manage images
 \usepackage{listings}
 \usepackage{color}
+\usepackage{subfig}
 
 \definecolor{mygreen}{rgb}{0,0.6,0}
 \definecolor{mygray}{rgb}{0.5,0.5,0.5}
@@ -149,7 +150,7 @@
 					Université de Strasbourg 								% Institution of author
 					\par\end{flushleft}\HorRule}
 
-\date{19 septembre 2016}																			
+\date{3 octobre 2016}																			
 
 
 
@@ -159,26 +160,56 @@
 \thispagestyle{fancy} 			% Enabling the custom headers/footers for the first page 
 % The first character should be within \initial{}
 \initial{D}\textbf{ans} ce TP nous devions exécuter des produits matriciels, qui sont des opérations mathématiques très gourmandes, avec des complexité algorithmique de l'ordre de $ \mathcal{O}(n^3)$. Afin de mettre pleinement à disposition les capacités de nos machines, nous avons donc exécuté les calculs cette fois sur la carte graphique de nos ordinateurs, grâce à la technologie CUDA (Compute Unified Device Architecture). Comme pour le TP précédent, il s'agit d'un produit de matrices $ 4096 \times 4096$. Il est à noter que sur les cartes graphiques des machines de la salle J4 , des \textbf{gtx680, architecture Kepler}, nous n'avions pas le droit de lancer des calculs trop longs. Pour des raisons de sécurité, sans doute, il nous était impossible de réaliser des calculs dépassant les 11-12 secondes. Néanmoins cela ne nous a pas empêché d'obtenir des résultats concluants, étant donné que de toute manière nous cherchions à optimiser le temps de calcul.\par
-Dans ce rapport, nous expliquerons tout d'abord les problématiques de dimensionnement des blocs de \textit{threads} et leurs conséquences. Puis, nous étudierons les différents temps et puissances de calculs obtenus en fonction du dimensionnement des blocs
+Dans ce rapport, nous expliquerons tout d'abord les problématiques de dimensionnement des blocs de \textit{threads} et leurs conséquences. Puis, nous étudierons les différents temps et puissances de calculs obtenus en fonction du dimensionnement des blocs, sur le kernel 2. Enfin, nous traiterons les expérimentations effectuées sur le kernel 4, en nous concentrant sur la mémoire partagée : comment l'utiliser au mieux et les bienfaits de son utilisation. 
 
-\subsection*{Contexte : des dilemmes de pavage}
-L'intérêt du calcul distribué sur une carte graphique est de mettre à profit la puissance de calcul d'une GPU. En revanche, les GPU sont optimisées pour les calculs dits \textit{SIMD}, pour \textit{single instruction - multiple data}, ce qui veut dire qu'il est très simple pour une carte graphique de réaliser moult fois la même instruction sur un grand jeu de données diversifiées. Le calcul matriciel correspond très bien à ce genre de calculs.\par
-Une GPU s'organise en blocs de \textit{threads}, aussi appelés \textit{warps}. Une première contrainte est que le nombre de \textit{threads} par bloc ne peut dépasser 1024. On est aussi limité pour le nombre total de blocs, mais cette limite ne nous a pas concerné pour notre TP, celle-ci allant de $2^{16}$ à $2^{31} - 1$.\par
-Le dilemme mis en exergue dans ce TP concerne le dimensionnement de ces blocs : en effet, 
+\section{Contexte}
+\subsection{Environnement d'expérimentation}
+Comme dit précédemment, nous travaillons ici sur une carte graphique \textbf{gtx680, architecture Kepler}. Les données ont été prélevées une seule fois, puis notées sur un fichier \texttt{Excel} prévu à cet effet. Ensuite, nous avons converti ces donnés au format \texttt{csv}, qui ont ensuite été représentées graphiquement avec \texttt{Gnuplot}. Parallèlement, nous avons aussi intégré dans ce rapport un graphique qui était déjà généré dans la feuille \texttt{Excel}.
+\subsection{Des dilemmes de pavage}
+L'intérêt du calcul distribué sur une carte graphique est de mettre à profit la puissance de calcul d'une GPU. En revanche, les GPU sont optimisées pour les calculs dits \textit{SIMD}, pour \textit{single instruction - multiple data}, ce qui veut dire qu'il est très simple pour une carte graphique de réaliser moult fois la même instruction sur un grand jeu de données diversifiées. Le calcul matriciel correspond exactement à ce genre de calculs.\par
+Une GPU s'organise en blocs de \textit{threads}, aussi appelés \textit{warps}. Chaque \textit{thread} est en charge d'une toute partie du calcul. En effet ces \textit{threads} ne sont pas faits pour se comporter comme des \textit{threads} POSIX : ils sont conçus pour réaliser des calculs très très simples. Ici, par exemple, un \textit{thread} est en charge d'une seule et unique case de la matrice résultat à la fois. Ce qui veut dire qu'il gère la somme de $Nb_{colonnes}(\mathcal{A}) \times (Nb_{lignes}\mathcal{B})$ produits de \texttt{double}.\par
+Une première contrainte est que le nombre de \textit{threads} par bloc ne peut dépasser 1024. On est aussi limité pour le nombre total de blocs, mais cette limite ne nous a pas concerné pour notre TP, celle-ci allant de $2^{16}$ à $2^{31} - 1$. Le dilemme mis en exergue dans ce TP concerne le dimensionnement de ces blocs : en effet, on peut subdiviser les matrices à multiplier entre elles en blocs de différentes tailles, ce qui a différentes conséquences. Les questions auxquelles nous essaierons de répondre sont : 
+\begin{itemize}
+\item Sur une seule dimension, quelle semble être la largeur optimale?
+\item Sur deux dimensions, quel(s) facteur(s) influe le plus sur les différentes puissances/durées de calcul?
+\end{itemize}
 
-\subsubsection*{Conditions d'expérimentation}
-Les mesures de l'expérimentation n'ont été effectuées qu'une seule fois. Il est donc claire que ces résultats sont qualitatifs et non quantitatifs. Ce rapport sert surtout à mettre en avant un raisonnement. Les conclusions sont à prendre avec précautions et à revérifier expérimentalement sur plus d'essais. \newline
-Nous nous sommes basés sur le temps d'exécution de la boucle pour les mesures de temps.
-
-\subsubsection*{Kernel 1 contre kernel 0}
-
-\subsubsection*{\textit{Round robin} contre une répartition voisine des tâches}
+\section{Allocation de blocs d'une seule dimension}
 \begin{figure}
-\centering
-\includegraphics[keepaspectratio,width=8.5cm]{img/rr_v.png} 
-\caption{Comparaison du temps d'exécution en round robin contre voisins pour 1 et 2 threads. Les performances sont \textit{évidemment} les mêmes pour un seul nœud.}
-\label{fig:rr_v}
+    \subfloat[Temps de calcul en fonction de la largeur de bloc.
+      \label{img:1DK1_time}]{%
+      \includegraphics[keepaspectratio,width=0.47\textwidth]{img/bloc_1D_time.png}
+    }
+    \hfill
+    \subfloat[Puissance de calcul en fonction de la largeur de bloc.
+      \label{img:1DK1_power}]{%
+      \includegraphics[keepaspectratio,width=0.47\textwidth]{img/bloc_1D_power.png}
+    }
+    \caption{Temps et puissance de calcul en fonction de la largeur du bloc 1D.}
+    \label{fig:1DK1}
 \end{figure}
+
+\subsection{Analyse relative}
+La figure \ref{fig:1DK1} présente, à gauche, le temps d'exécution du produit en fonction de la largeur du bloc, et à droite, la la puissance d'exécution en fonction de la largeur du bloc.\par
+Dans l'étude \textbf{relative} des résultats, c'est à dire lorsqu'on les compare entre eux, deux choses importantes sont à notes : 
+\begin{itemize}
+\item Le seul écart notable est entre 32 et 64 \textit{threads} de largeur pour le bloc. Comme mentionné en cours, les meilleurs résultats sont souvent obtenus entre 32 et 64 threads par bloc, ici la bonne réponse est 64.
+\item 64 n'est que légèrement meilleur que les valeurs qui lui sont supérieures. Néanmoins 64 est clairement la meilleure valeur. C'est le meilleur compromis entre le nombre de blocs et la taille des blocs. Au-delà, les blocs sont trop grands pour être le plus performant. En deçà de 64 \textit{threads}, il y a sûrement trop de communication de données par rapport au temps total de calcul.
+\end{itemize}
+
+\subsection{Analyse absolue}
+Dans l'absolu, ce produit matriciel avec un bloc 1D n'est pas très performant. En effet, pour comparaison, le même calcul avec le CPU a pris \textbf{3.73 secondes} pour une puissance de calcul de \textbf{36.81 gigaflops}. On voit donc que le CPU est plus performant que le GPU en bloc 1D. On comprend donc que la GPU n'est pas suffisamment monopolisée, le calcul pas assez bien distribué pour qu'il puisse être réellement rentable.
+
+\section{Allocations de blocs 2 dimensions sans mémoire partagée}
+Dans cette partie, nous allons donc jouer sur un deuxième facteur pour améliorer les performances et les rendre enfin meilleures que sur la CPU. Pour ce faire, nous allons désormais jouer sur \textbf{deux} paramètres afin d'étudier les résultats : la \textit{hauteur} et la \textit{largeur} des blocs. Ainsi, les blocs pourront potentiellement contenir des données en mémoire de manière plus contiguë. Cela pourrait potentiellement diminuer le temps de calcul étant donné que les mêmes données seront peut-être chargées en cache pour plusieurs \textit{threads}.\par
+La figure \ref{img:2DK2_power} est une représentation des résultats obtenus. Comme il s'agit d'un tableau à trois dimensions, le graphe utilisé ici, qui nous a gracieusement été fourni par notre enseignant, se sert de l'axe des abscisses pour la variable $\mathcal{X}$, la largeur du bloc, et de l'axe des ordonnées pour la variable $\mathcal{Y}$.
+\begin{figure}
+      \includegraphics[keepaspectratio,width=12cm]{img/Gflops_depending_bloc_size.png}
+      \label{img:2DK2_power}
+	  \caption{Puissance de calcul en fonction de la hauteur du bloc Y (en ordonnées) et de la largeur des blocs X (en abscisse).}
+\end{figure} 
+
+\section{Annexe : code}
 
 \subsection*{Initialisation MPI}
 \begin{lstlisting}
