@@ -228,13 +228,16 @@ On devine ainsi que le pavage optimal tend vers une forme carrée, avec un carr�
 
 \section{Analyse des résultats en 2D sur le kernel 4 avec mémoire partagée}
 Pour l'instant nous ne nous étions pas préoccupés des allocations mémoires et des registres utilisés. Dans cette section, c'est exactement ce qui va nous intéresser. Nous allons tenter d'optimiser l'allocation des différentes mémoires de la GPU pour ce calcul matriciel.
+
 \subsection{Considérations théoriques}
- 
-
-
+Pour optimiser \textit{matériellement }le produit matriciel, nous nous sommes servis de la \textbf{mémoire partagée} (plus couramment appelée sous son nom anglais \textit{shared memory}). La mémoire partagée d'une GPU ayant une taille plutôt restreinte, il faut l'utiliser intelligemment. C'est pourquoi nous avons procédé de la manière suivante.\par
+Nous savons que chaque \textit{thread} est responsable, pour un bloc donné, d'un seul et unique élément de la matrice résultat $\mathcal{C}$. Or, pour calculer cet élément, il faut faire une addition incrémentale de produits d'éléments des matrices $\mathcal{A}$ et $\mathcal{B}$. Le registre est la mémoire la plus rapide pour les calculs sur GPU. Par conséquent, il suffit d'un seul registre,un \texttt{double}, pour stocker progressivement le résultat de cette somme incrémentale de produits. Comme il y a assez de registres pour stocker \texttt{X} $\times$ \texttt{Y} doubles sur la carte graphique. En effet, il y a au maximum besoin de \texttt{SIZE} $\times$ \texttt{SIZE} registres en même temps, dans le cas peu optimal où l'on utilise un seul bloc pour calculer tout le produit. Dans notre cas de figure, étant donné que de toute manière nous ne pouvions pas effectuer de calcul de plus de 11 secondes environ, nous ne pourrions jamais manipuler de matrice vraiment très grande, ce qui nous autorisait par conséquent à utiliser des registres pour stocker les résultat intermédiaire pour chaque \textit{thread}. Dans un contexte où les blocs sont trop grands, nous eussions dû utiliser mémoire partagée pour stocker les résultats intermédiaires. C'est d'ailleurs la solution qui nous était présentée à l'origine dans l'enoncé.\par
+En revanche, il fallait réaliser les produits à partir de sous-parties des matrices $\mathcal{A}$ et $\mathcal{B}$. 
+Ces éléments étaient trop nombreux pour être stockés dans des registres pour chaque \textit{thread}, nous devions donc les charger dans la \textbf{mémoire partagée}. Ainsi, pour calculer les éléments d'une sous-partie de la matrice résultat de $\mathcal{C}$, il fallait charger en mémoire partagée des lignes entières et des colonnes entières de $\mathcal{A}$ et $\mathcal{B}$. Ainsi, si notre sous-bloc de $\mathcal{C}$ faisait \texttt{BLOC\_SIZE\_X} colonnes pour \texttt{BLOC\_SIZE\_Y} lignes, il fallait charger en mémoire partagée \texttt{BLOC\_SIZE\_Y}  $\times$ \textbf{\texttt{SIZE}} $+$ \texttt{BLOC\_SIZE\_X}  $\times$ \textbf{\texttt{SIZE}} éléments en mémoire partagée! Soit (\texttt{BLOC\_SIZE\_Y} $+$ \texttt{BLOC\_SIZE\_X}) $\times$ \textbf{\texttt{SIZE}} éléments.\par
+Pour accélérer au maximum le produit matriciel, nous avons donc, pour un sous-bloc de $\mathcal{C}$ donnée, à chaque fois chargé les lignes et les colonnes correspondantes en mémoire partagée, qui est la deuxième mémoire la plus rapide d'accès pour les \textit{threads} en dehors des registres. Comme $\mathcal{A}$ et $\mathcal{B}$ n'étaient ici accédées qu'en lecture, il n'y avait pas de problème d'accès concurrents à ce niveau. En revanche, pour $\mathcal{C}$, il était indispensable d'attendre que tous les \textit{threads} aient fini leurs calculs pour un même élément du sous-bloc avant de calculer le sous-bloc suivant. Il fallait donc mettre une barrière, 
 \section{Annexe : code}
 
-\subsection*{Initialisation MPI}
+\subsection{Exemple du rapport précédent}%A supprimer, Ben ;)
 \begin{lstlisting}
 #include <stdio.h>
 #define N 10
@@ -274,4 +277,9 @@ void OneStepCirculation(unsigned long step)
 
 
 \end{lstlisting} 
+
+\subsection{Kernel 1 : Blocs 1D}
+\subsection{Kernel 2 : Blocs 2D, sans gestion de mémoire}
+\subsection{Kernel 4 : Blocs 2D, avec gestion de mémoire}
+
 \end{document}
