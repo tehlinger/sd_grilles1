@@ -230,11 +230,33 @@ On devine ainsi que le pavage optimal tend vers une forme carrée, avec un carr�
 Pour l'instant nous ne nous étions pas préoccupés des allocations mémoires et des registres utilisés. Dans cette section, c'est exactement ce qui va nous intéresser. Nous allons tenter d'optimiser l'allocation des différentes mémoires de la GPU pour ce calcul matriciel.
 
 \subsection{Considérations théoriques}
+\subsubsection{Allocation mémoire pour les sous-matrices de $\mathcal{C}$}
 Pour optimiser \textit{matériellement }le produit matriciel, nous nous sommes servis de la \textbf{mémoire partagée} (plus couramment appelée sous son nom anglais \textit{shared memory}). La mémoire partagée d'une GPU ayant une taille plutôt restreinte, il faut l'utiliser intelligemment. C'est pourquoi nous avons procédé de la manière suivante.\par
 Nous savons que chaque \textit{thread} est responsable, pour un bloc donné, d'un seul et unique élément de la matrice résultat $\mathcal{C}$. Or, pour calculer cet élément, il faut faire une addition incrémentale de produits d'éléments des matrices $\mathcal{A}$ et $\mathcal{B}$. Le registre est la mémoire la plus rapide pour les calculs sur GPU. Par conséquent, il suffit d'un seul registre,un \texttt{double}, pour stocker progressivement le résultat de cette somme incrémentale de produits. Comme il y a assez de registres pour stocker \texttt{X} $\times$ \texttt{Y} doubles sur la carte graphique. En effet, il y a au maximum besoin de \texttt{SIZE} $\times$ \texttt{SIZE} registres en même temps, dans le cas peu optimal où l'on utilise un seul bloc pour calculer tout le produit. Dans notre cas de figure, étant donné que de toute manière nous ne pouvions pas effectuer de calcul de plus de 11 secondes environ, nous ne pourrions jamais manipuler de matrice vraiment très grande, ce qui nous autorisait par conséquent à utiliser des registres pour stocker les résultat intermédiaire pour chaque \textit{thread}. Dans un contexte où les blocs sont trop grands, nous eussions dû utiliser mémoire partagée pour stocker les résultats intermédiaires. C'est d'ailleurs la solution qui nous était présentée à l'origine dans l'enoncé.\par
 En revanche, il fallait réaliser les produits à partir de sous-parties des matrices $\mathcal{A}$ et $\mathcal{B}$. 
+\subsubsection{Allocation de mémoire partagée  $\mathcal{A}$ et $\mathcal{B}$}
 Ces éléments étaient trop nombreux pour être stockés dans des registres pour chaque \textit{thread}, nous devions donc les charger dans la \textbf{mémoire partagée}. Ainsi, pour calculer les éléments d'une sous-partie de la matrice résultat de $\mathcal{C}$, il fallait charger en mémoire partagée des lignes entières et des colonnes entières de $\mathcal{A}$ et $\mathcal{B}$. Ainsi, si notre sous-bloc de $\mathcal{C}$ faisait \texttt{BLOC\_SIZE\_X} colonnes pour \texttt{BLOC\_SIZE\_Y} lignes, il fallait charger en mémoire partagée \texttt{BLOC\_SIZE\_Y}  $\times$ \textbf{\texttt{SIZE}} $+$ \texttt{BLOC\_SIZE\_X}  $\times$ \textbf{\texttt{SIZE}} éléments en mémoire partagée! Soit (\texttt{BLOC\_SIZE\_Y} $+$ \texttt{BLOC\_SIZE\_X}) $\times$ \textbf{\texttt{SIZE}} éléments.\par
-Pour accélérer au maximum le produit matriciel, nous avons donc, pour un sous-bloc de $\mathcal{C}$ donnée, à chaque fois chargé les lignes et les colonnes correspondantes en mémoire partagée, qui est la deuxième mémoire la plus rapide d'accès pour les \textit{threads} en dehors des registres. Comme $\mathcal{A}$ et $\mathcal{B}$ n'étaient ici accédées qu'en lecture, il n'y avait pas de problème d'accès concurrents à ce niveau. En revanche, pour $\mathcal{C}$, il était indispensable d'attendre que tous les \textit{threads} aient fini leurs calculs pour un même élément du sous-bloc avant de calculer le sous-bloc suivant. Il fallait donc mettre une barrière, 
+Pour accélérer au maximum le produit matriciel, nous avons donc, pour un sous-bloc de $\mathcal{C}$ donnée, à chaque fois chargé les lignes et les colonnes correspondantes en mémoire partagée, qui est la deuxième mémoire la plus rapide d'accès pour les \textit{threads} en dehors des registres. Comme $\mathcal{A}$ et $\mathcal{B}$ n'étaient ici accédées qu'en lecture, il n'y avait pas de problème d'accès concurrents à ce niveau.
+\subsubsection{Problèmes de synchronisation}
+En revanche, pour $\mathcal{C}$, il était indispensable d'attendre que tous les \textit{threads} aient fini leurs calculs pour un même élément du sous-bloc avant de calculer le sous-bloc suivant. Il fallait donc mettre une barrière, un appel de la fonction CUDA \texttt{sync\_threads()}. Pour être plus précis, nous avons placé un appel à cette barrière une fois après les chargement dans la mémoire partagée, et une fois après l'enregistrement du registre dans la matrice $\mathcal{C}$. Ainsi on est certain que chaque \textit{thread} a les bonnes données avant d'entamer ses additions, et que tous les résultats ont été enregistrés avant de passer au bloc suivant.
+\subsection{Analyse des résultats avec mémoire partagée}
+
+Pour se simplifier la tâche, pour comparer les résultats.
+
+\begin{figure}
+    \subfloat[Temps de calcul en fonction de la taille du bloc (en nombre d'éléments).
+      \label{img:1DK1_time}]{%
+      \includegraphics[keepaspectratio,width=0.47\textwidth]{img/K4_time.png}
+    }
+    \hfill
+    \subfloat[Puissance de calcul en fonction de la taille du bloc (en nombre d'éléments).
+      \label{img:1DK1_power}]{%
+      \includegraphics[keepaspectratio,width=0.47\textwidth]{img/K4_power.png}
+    }
+    \caption{Temps et puissance de calcul en fonction de la taille du bloc de \textit{threads} (\texttt{Size} $\times$ \texttt{Size} }
+    \label{fig:1DK1}
+\end{figure}
+
 \section{Annexe : code}
 
 \subsection{Exemple du rapport précédent}%A supprimer, Ben ;)
