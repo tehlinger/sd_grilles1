@@ -241,7 +241,7 @@ Pour accélérer au maximum le produit matriciel, nous avons donc, pour un sous-
 En revanche, pour $\mathcal{C}$, il était indispensable d'attendre que tous les \textit{threads} aient fini leurs calculs pour un même élément du sous-bloc avant de calculer le sous-bloc suivant. Il fallait donc mettre une barrière, un appel de la fonction CUDA \texttt{sync\_threads()}. Pour être plus précis, nous avons placé un appel à cette barrière une fois après les chargement dans la mémoire partagée, et une fois après l'enregistrement du registre dans la matrice $\mathcal{C}$. Ainsi on est certain que chaque \textit{thread} a les bonnes données avant d'entamer ses additions, et que tous les résultats ont été enregistrés avant de passer au bloc suivant.
 \subsection{Analyse des résultats avec mémoire partagée}
 
-Pour se simplifier la tâche, pour comparer les résultats.
+Pour se simplifier la tâche, nous ne comparons dans cette section que les performances de produits sur les grilles carrées de 64, 256 et 1024 éléments (respectivement 8, 16 et 32 cases de côté).
 
 \begin{figure}
     \subfloat[Temps de calcul en fonction de la taille du bloc (en nombre d'éléments).
